@@ -1,0 +1,9 @@
+streamlit
+pandas
+python-dotenv
+requests
+fuzzywuzzy
+python-Levenshtein
+reportlab
+openpyxl
+
