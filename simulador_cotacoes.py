@@ -362,6 +362,45 @@ def ui_item_avulso():
                 })
                 st.success(f"Item avulso adicionado: {nome_ok} (Qtd {int(qtd)}).")
             st.rerun()
+def clamp(x, lo, hi):
+    return max(lo, min(hi, x))
+
+def parse_pct_text(s: str) -> float:
+    # Aceita '0,5', '0.5', ' 10 % ', '-7,25', etc.
+    if s is None:
+        return 0.0
+    s = str(s).strip().replace('%','').replace(' ','')
+    s = s.replace(',', '.')
+    m = re.search(r"^-?\d+(\.\d+)?$", s)
+    if not m:
+        # tenta extrair primeiro número válido se veio com texto junto
+        m = re.search(r"(-?\d+(?:\.\d+)?)", s)
+    return float(m.group(1)) if m else 0.0
+
+def pct_input_text(label: str, key: str, container, step: float = 0.5) -> float:
+    """Campo de % que aceita vírgula e tem +/-. Armazena o float em st.session_state[key]."""
+    if key not in st.session_state:
+        st.session_state[key] = 0.0
+
+    # layout: [entrada] [ - ] [ + ]
+    c1, c2, c3 = container.columns([3, 1, 1])
+
+    # mostra valor com vírgula
+    shown = f"{st.session_state[key]:.2f}".replace('.', ',')
+    raw = c1.text_input(label, value=shown, key=f"txt_{key}")
+
+    # parse e clamp em [-100, 100]
+    v = clamp(parse_pct_text(raw), -100.0, 100.0)
+
+    # botões +/- (ajuste fino)
+    if c2.button("−", key=f"minus_{key}"):
+        v = clamp(v - step, -100.0, 100.0)
+    if c3.button("+", key=f"plus_{key}"):
+        v = clamp(v + step, -100.0, 100.0)
+
+    # persiste
+    st.session_state[key] = v
+    return v
 
 def ui_orcamento(logo_bytes: bytes):
     st.subheader("🧾 Orçamento — informe Quantidade e Desconto (%) ou Preço direto")
@@ -478,6 +517,11 @@ with st.sidebar:
     subtotal = sum(float(i.get("Total", 0.0)) for i in itens)
     st.metric("💰 Parcial do orçamento", fmt_brl(subtotal))
     st.write(f"🛒 Itens no orçamento: **{len(itens)}**")
+
+
+
+
+
 
 # ---------- RENDER ----------
 if view == "Pesquisar":
