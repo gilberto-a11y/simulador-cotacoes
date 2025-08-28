@@ -146,20 +146,16 @@ def parse_money_text(s: str) -> float:
     return max(0.0, v)
 
 # =================== ENTRADAS QUE SEMPRE PERMITEM DIGITAR ===================
-def pct_input_text(label: str, key: str, container, step: float = 0.5) -> float:
-    """Campo de % baseado em text_input (aceita vírgula/ponto) + botões +/-."""
+def pct_input_text(label: str, key: str, container) -> float:
+    """Campo de % baseado em text_input (aceita vírgula/ponto). Sem botões."""
     if key not in st.session_state:
         st.session_state[key] = 0.0
-    c1, c2, c3 = container.columns([3, 1, 1])
     shown = f"{st.session_state[key]:.2f}".replace('.', ',')
-    raw = c1.text_input(label, value=shown, key=f"txt_{key}")
+    raw = container.text_input(label, value=shown, key=f"txt_{key}")
     v = clamp(parse_pct_text(raw), -100.0, 100.0)
-    if c2.button("−", key=f"minus_{key}"):
-        v = clamp(v - step, -100.0, 100.0)
-    if c3.button("+", key=f"plus_{key}"):
-        v = clamp(v + step, -100.0, 100.0)
     st.session_state[key] = v
     return v
+
 
 def money_input_text(label: str, key: str, container):
     """Campo de preço baseado em text_input (aceita vírgula/ponto)."""
@@ -318,9 +314,9 @@ def ui_pesquisa(df: pd.DataFrame):
                             "Categoria": sel["Categoria"],
                             "Subcategoria": sel["Subcategoria"],
                             "Preço Tabela": preco_tab,
-                            "Desconto %": 0.00,
+                            "Desconto %": 0.0,
                             "Quantidade": qtd,
-                            "Preço Direto": 0.00,
+                            "Preço Direto": 0.0,
                             "Preço Negociado": preco_final,
                             "Total": round(preco_final * qtd, 2),
                             "Mercado": []
@@ -371,9 +367,9 @@ def ui_item_avulso():
                     "Categoria": categoria,
                     "Subcategoria": subcat,
                     "Preço Tabela": preco_tab,
-                    "Desconto %": 0.00,
+                    "Desconto %": 0.0,
                     "Quantidade": int(qtd),
-                    "Preço Direto": 0.00,
+                    "Preço Direto": 0.0,
                     "Preço Negociado": preco_final,
                     "Total": round(preco_final * int(qtd), 2),
                     "Mercado": [],
@@ -411,9 +407,9 @@ def ui_orcamento(logo_bytes: bytes):
         if q_key not in st.session_state:
             st.session_state[q_key] = int(item.get("Quantidade", 1))
         if d_key not in st.session_state:
-            st.session_state[d_key] = float(item.get("Desconto %", 0.00))
+            st.session_state[d_key] = float(item.get("Desconto %", 0.0))
         if p_key not in st.session_state:
-            st.session_state[p_key] = float(item.get("Preço Direto", 0.00))
+            st.session_state[p_key] = float(item.get("Preço Direto", 0.0))
 
         # Quantidade (inteiro OK com number_input)
         new_q = colA.number_input("Quantidade", min_value=1, step=1, key=q_key)
@@ -437,7 +433,7 @@ def ui_orcamento(logo_bytes: bytes):
             item["Preço Direto"] = preco_final
         else:
             # Desconto (%) como TEXT INPUT (aceita vírgula/ponto) + +/- botões
-            new_d = pct_input_text("Desconto (%)", key=d_key, container=colB, step=0.5)
+            new_d = pct_input_text("Desconto (%)", key=d_key, container=colB)
             colB.caption("Negativo = acréscimo (ex.: -10%).")
             preco_final = round(preco_tab * (1 - float(new_d)/100.0), 2)
             desconto_usado = float(new_d)
