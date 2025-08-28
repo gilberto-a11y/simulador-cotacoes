@@ -1,7 +1,5 @@
 # simulador_cotacoes.py — Pesquisa -> Orçamento (qtd/discount OU preço direto) + Google por item
 # Rodar: streamlit run simulador_cotacoes.py
-# Requisitos: streamlit, pandas, python-dotenv, requests, fuzzywuzzy, python-Levenshtein,
-#             reportlab, openpyxl, Pillow
 
 import os, io, re, unicodedata, time, base64
 from typing import List, Dict, Tuple
@@ -9,7 +7,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-# ====== (opcional) carregar SERPAPI_API_KEY do .env sem quebrar por encoding ======
+# ====== (opcional) carregar SERPAPI_API_KEY do .env ======
 SERPAPI_KEY = os.getenv("SERPAPI_API_KEY", "")
 try:
     from dotenv import load_dotenv
@@ -42,8 +40,7 @@ from PIL import Image
 # ====== UI base ======
 st.set_page_config(page_title="Simulador de Cotações - Made in Natural", layout="wide")
 
-# ---- diminuir fontes (ajuste fino no FONT_SCALE) ----
-FONT_SCALE = 0.92  # diminua para fontes menores (ex.: 0.88)
+FONT_SCALE = 0.92
 st.markdown(f"""
 <style>
 html, body, [data-testid="stAppViewContainer"] * {{ font-size: {FONT_SCALE}rem; }}
@@ -57,22 +54,19 @@ h3 {{ font-size: 1.05rem !important; }}
 
 BASE_FILE = "tab_precos.xlsx"
 
-# ====== LOGO: embutido + auto-load de arquivo local (sem UI) ======================
-# Logo embutido (Made in Natural) — será usado se não houver arquivo local
-LOGO_EMBED_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJIAAABI1BMVEX////k6FPzQCNGiC5DhikxfgpA"
-    "ZrT3/f+Jm1/q9f2VsnWnq6+3yc7T3v/7x+fPp8uZ6q7rT39/m9PjW4eXW3+F3rL2Pr8PZ5OeDrsHc6fK1"
-    "x9zJ2uBppcC7zdnS4N6An8CSoM6Xn8u0yuDY4+fA0t6Tn8x6pb+xyt0/d7tEgKZ6qL3T2d1whbZ0m8bS2"
-    "N7o8vGRoM+SuNFXlcN2r794sbm9zt6xyt97q8C6zth+scB1qLk2o7WYs9OqvNqWtdNpmcCkp8u1yuB3rL"
-    "0xobK9zN+8zN7C1d5+jr+3zd6Tnsxkh7a1yN+zu9+HpcCwxts9p7y4zdysv9v////0tY6NAAAAYHRSTlMA"
-    "AQIDBAYICQoLDA8RExUYGhweISMkKC0xNjk7QEVHSUpOUFZbX2FmaGxvdXuCh5CXmJ2goaKmp6irrrG0t7"
-    "m6v8CExcbK0Nna3OPq7PH0+/z+Ai2eAAABUklEQVR4nO3dS47cQBiG0b2z0yYy3Q0lq9a1gEwIRV28//+F"
-    "y5lO0d0gq6n3w8XH5O2gq2xkqC8p9H0h0eR9XWcY7J8kq5mJ7b2Xq9WJf7r7e2W0zqJ7o7f3uWm3mM3k4D"
-    "rDRU7o8y8V6W0k2G3b2n3GSVgqH0Ywq7w1w0y8h7C4V9VY9E6cR8n0p6K7QW+H0n9iK1l9m9Dq9l3ZcY2b"
-    "2Kz0Q2n4kQfZyVnKq7oN8Tg9zM9Qz7WZb2sC7b4p2Y0s2l8bF7cV0Q7f2xQb7mG5k6k2w1o3b5lq8sH6M2"
-    "l1j5q1v6p3lK8QJg2w2m4HkM2l3j6q2x5r4t9Q2l2r7o5k8o3c7v1n5o3EJj9v2r5j6M2l3n6r2x5r4t9Q"
-    "2l2r7o5k8o3c7v1n5o3EJj9v2r5j6M2mAAAAAElFTkSuQmCC"
-)
+# ====== LOGO ======
+LOGO_EMBED_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJIAAABI1BMVEX////k6FPzQCNGiC5DhikxfgpA"
+"ZrT3/f+Jm1/q9f2VsnWnq6+3yc7T3v/7x+fPp8uZ6q7rT39/m9PjW4eXW3+F3rL2Pr8PZ5OeDrsHc6fK1"
+"x9zJ2uBppcC7zdnS4N6An8CSoM6Xn8u0yuDY4+fA0t6Tn8x6pb+xyt0/d7tEgKZ6qL3T2d1whbZ0m8bS2"
+"N7o8vGRoM+SuNFXlcN2r794sbm9zt6xyt97q8C6zth+scB1qLk2o7WYs9OqvNqWtdNpmcCkp8u1yuB3rL"
+"0xobK9zN+8zN7C1d5+jr+3zd6Tnsxkh7a1yN+zu9+HpcCwxts9p7y4zdysv9v////0tY6NAAAAYHRSTlMA"
+"AQIDBAYICQoLDA8RExUYGhweISMkKC0xNjk7QEVHSUpOUFZbX2FmaGxvdXuCh5CXmJ2goaKmp6irrrG0t7"
+"m6v8CExcbK0Nna3OPq7PH0+/z+Ai2eAAABUklEQVR4nO3dS47cQBiG0b2z0yYy3Q0lq9a1gEwIRV28//+F"
+"y5lO0d0gq6n3w8XH5O2gq2xkqC8p9H0h0eR9XWcY7J8kq5mJ7b2Xq9WJf7r7e2W0zqJ7o7f3uWm3mM3k4D"
+"rDRU7o8y8V6W0k2G3b2n3GSVgqH0Ywq7w1w0y8h7C4V9VY9E6cR8n0p6K7QW+H0n9iK1l9m9Dq9l3ZcY2b"
+"2Kz0Q2n4kQfZyVnKq7oN8Tg9zM9Qz7WZb2sC7b4p2Y0s2l8bF7cV0Q7f2xQb7mG5k6k2w1o3b5lq8sH6M2"
+"l1j5q1v6p3lK8QJg2w2m4HkM2l3j6q2x5r4t9Q2l2r7o5k8o3c7v1n5o3EJj9v2r5j6M2l3n6r2x5r4t9Q"
+"2l2r7o5k8o3c7v1n5o3EJj9v2r5j6M2mAAAAAElFTkSuQmCC")
 
 def default_logo_bytes() -> bytes:
     try:
@@ -81,10 +75,8 @@ def default_logo_bytes() -> bytes:
         return b""
 
 def load_logo_bytes():
-    # 1) se já estiver em sessão
     if "logo_bytes" in st.session_state and st.session_state["logo_bytes"]:
         return st.session_state["logo_bytes"]
-    # 2) procurar arquivo local padrão
     for name in ("Logo.png", "logo.png", "logo.jpg", "logo.jpeg"):
         if os.path.exists(name):
             try:
@@ -95,7 +87,6 @@ def load_logo_bytes():
                     return st.session_state["logo_bytes"]
             except Exception:
                 pass
-    # 3) fallback embutido
     st.session_state["logo_bytes"] = default_logo_bytes()
     return st.session_state["logo_bytes"]
 
@@ -136,6 +127,19 @@ def to_float_brl(txt: str):
     m = re.search(r"(-?\d+(\.\d+)?)", s)
     return float(m.group(1)) if m else None
 
+# >>> CORREÇÃO: conversores robustos para % (aceita '0,50', '5', '5,5%')
+def to_float_pct(v) -> float:
+    if v is None: return 0.0
+    if isinstance(v, (int, float)): return float(v)
+    s = str(v).strip().replace("%","").replace(" ","").replace(",",".")
+    try:
+        return float(s) if s else 0.0
+    except Exception:
+        return 0.0
+
+def fmt_pct_br(x: float) -> str:
+    return f"{float(x):.2f}%".replace(".", ",")
+
 # ====== Planilha robusta ===========================================================
 @st.cache_data(show_spinner=False)
 def ler_planilha_robusta(path: str) -> pd.DataFrame:
@@ -173,7 +177,7 @@ def ler_planilha_robusta(path: str) -> pd.DataFrame:
     best["__norm"] = best["Produto"].map(_norm)
     return best
 
-# ====== Google Shopping (on-demand) ===============================================
+# ====== Google Shopping ============================================================
 @st.cache_data(show_spinner=False, ttl=60*30)
 def consultar_google_shopping(query: str, num=6, location="São Paulo, State of São Paulo, Brazil") -> List[Dict]:
     if not SERPAPI_KEY: return []
@@ -193,6 +197,7 @@ def consultar_google_shopping(query: str, num=6, location="São Paulo, State of 
     except Exception:
         return []
 
+from fuzzywuzzy import fuzz
 def melhores_sugestoes(df: pd.DataFrame, query: str, limite=12, thr=45):
     qn = _norm(query)
     if not qn: return []
@@ -211,22 +216,13 @@ except Exception as e:
     st.error(f"Erro ao abrir '{BASE_FILE}': {e}")
     st.stop()
 
-#with st.expander("📂 Prévia da tabela de preços"):
-#    st.dataframe(df.drop(columns=["__norm"]), use_container_width=True)
-
 # ====== Estado ====================================================================
 if "itens" not in st.session_state: st.session_state["itens"] = []
-
-# ====================== NAV LATERAL + TELAS ======================
-# Deixe o estado base
-if "itens" not in st.session_state:
-    st.session_state["itens"] = []
 
 # ---------- TELAS ----------
 def ui_pesquisa(df: pd.DataFrame):
     st.subheader("🔎 Pesquisar produto (selecione para adicionar)")
 
-    # Reset seguro do campo de busca (antes do widget)
     if "consulta" not in st.session_state:
         st.session_state["consulta"] = ""
     if st.session_state.get("reset_consulta", False):
@@ -248,12 +244,9 @@ def ui_pesquisa(df: pd.DataFrame):
                 selecionados = []
 
                 for idx, (row, score) in enumerate(sugestoes, start=1):
-                    # ✔ | Produto | Preço | Match | Qtd
                     c0, c1, c2, c3, c4 = st.columns([0.6, 5, 1.8, 1.2, 1.6])
-
                     sel_key = f"sel_{idx}"
                     qty_key = f"qty_{idx}"
-
                     with c0:
                         sel = st.checkbox("", key=sel_key, value=False)
                     with c1:
@@ -280,15 +273,12 @@ def ui_pesquisa(df: pd.DataFrame):
 
                 submitted = st.form_submit_button("➕ Adicionar selecionados")
 
-            # Processa em lote e limpa busca
             if submitted and selecionados:
                 for sel in selecionados:
                     codigo  = str(sel["Código"])
                     produto = str(sel["Produto"])
                     preco_tab = float(sel["Preço Tabela"])
                     qtd = int(sel["Quantidade"])
-
-                    # Mesclar só se Código + Produto (normalizado) coincidirem
                     existente = next(
                         (it for it in st.session_state["itens"]
                          if str(it["Código"]) == codigo and _norm(it["Produto"]) == _norm(produto)),
@@ -372,6 +362,7 @@ def ui_item_avulso():
                 })
                 st.success(f"Item avulso adicionado: {nome_ok} (Qtd {int(qtd)}).")
             st.rerun()
+
 def ui_orcamento(logo_bytes: bytes):
     st.subheader("🧾 Orçamento — informe Quantidade e Desconto (%) ou Preço direto")
 
@@ -383,7 +374,6 @@ def ui_orcamento(logo_bytes: bytes):
     total_geral = 0.0
 
     for idx, item in enumerate(itens):
-        # Badge AVULSO (se existir)
         is_avulso = item.get("Avulso", False)
         badge = " <span style='background:#f59e0b;color:#111;padding:2px 6px;border-radius:10px;font-size:0.75rem;margin-left:6px;'>AVULSO</span>" if is_avulso else ""
 
@@ -395,20 +385,18 @@ def ui_orcamento(logo_bytes: bytes):
 
         colA, colB, colC, colD, colE, colF, colG = st.columns([2,2,2,1,1,1,1])
 
-        # keys únicas por item
         q_key = f"q_{idx}"
         d_key = f"d_{idx}"
         p_key = f"p_{idx}"
 
-        # estados iniciais dos widgets (uma vez)
+        # inicializa somente uma vez
         if q_key not in st.session_state:
             st.session_state[q_key] = int(item.get("Quantidade", 1))
         if d_key not in st.session_state:
-            st.session_state[d_key] = float(item.get("Desconto %", 0.0))
+            st.session_state[d_key] = float(item.get("Desconto %", 0.0))   # >>> CORREÇÃO: mantemos como float
         if p_key not in st.session_state:
             st.session_state[p_key] = float(item.get("Preço Direto", 0.0))
 
-        # widgets
         new_q = colA.number_input("Quantidade", min_value=1, step=1, key=q_key)
         new_p = colC.number_input("Preço direto (opcional)", min_value=0.0, step=0.01, format="%.2f", key=p_key)
         colG.button("↩︎", key=f"clr_{idx}", help="Limpar preço direto",
@@ -416,16 +404,17 @@ def ui_orcamento(logo_bytes: bytes):
 
         preco_tab = float(item["Preço Tabela"])
 
-        # lógica de preço / desconto
         if new_p and float(new_p) > 0.0:
             desconto_calc = round((1 - (float(new_p) / preco_tab)) * 100.0, 2)
+            # campo apenas de exibição quando há preço direto
             colB.number_input("Desconto (%)", value=desconto_calc, step=0.01, format="%.2f",
                               disabled=True, key=f"view_{d_key}")
             preco_final = round(float(new_p), 2)
             desconto_usado = desconto_calc
             item["Preço Direto"] = preco_final
         else:
-            new_d = colB.number_input("Desconto (%)", step=0.5, format="%.2f", key=d_key)
+            # >>> CORREÇÃO: step fino e sem reatribuição do session_state depois do widget
+            new_d = colB.number_input("Desconto (%)", step=0.01, format="%.2f", key=d_key)
             colB.caption("Negativo = acréscimo (ex.: -10%).")
             preco_final = round(preco_tab * (1 - float(new_d)/100.0), 2)
             desconto_usado = float(new_d)
@@ -433,7 +422,7 @@ def ui_orcamento(logo_bytes: bytes):
 
         total = round(preco_final * int(new_q), 2)
 
-        # atualiza o item
+        # atualiza item (NÃO reescreve st.session_state[d_key])
         item["Quantidade"] = int(new_q)
         item["Desconto %"] = float(desconto_usado)
         item["Preço Negociado"] = preco_final
@@ -442,7 +431,6 @@ def ui_orcamento(logo_bytes: bytes):
         colD.metric("Preço final", fmt_brl(preco_final))
         colE.metric("Total", fmt_brl(total))
 
-        # ações por item
         cF1, cF2 = colF.columns(2)
         ac_g = cF1.button("🔎", key=f"g_{idx}", help="Consultar Google Shopping p/ este produto")
         rem  = cF2.button("🗑️", key=f"rm_{idx}", help="Remover este item")
@@ -459,7 +447,6 @@ def ui_orcamento(logo_bytes: bytes):
             st.rerun()
             return
 
-        # comparação de mercado (se houver)
         if item.get("Mercado"):
             with st.expander("Comparação de Preços (Google Shopping)"):
                 st.dataframe(pd.DataFrame(item["Mercado"]), use_container_width=True)
@@ -467,43 +454,31 @@ def ui_orcamento(logo_bytes: bytes):
         st.markdown("---")
         total_geral += total
 
-    # === Totais + limpar (APENAS nesta tela) ===
     c1, c2 = st.columns([3,1])
     c1.subheader(" ")
     c2.metric("✅ Total geral", fmt_brl(total_geral))
 
     if st.button("🧹 Limpar orçamento", key="clear_cart"):
         st.session_state["itens"] = []
-        # limpa estados dos widgets do orçamento
         for k in list(st.session_state.keys()):
             if k.startswith(("q_", "d_", "p_", "view_")):
                 del st.session_state[k]
-        # limpa PDF em memória (se houver)
         st.session_state.pop("pdf_bytes", None)
         st.session_state.pop("pdf_name", None)
-
         st.success("Orçamento limpo.")
         st.rerun()
         return
 
 # ---------- NAV LATERAL ----------
-
 with st.sidebar:
     st.header("Menu")
-    # sem "PDF" aqui
     view = st.radio("Ir para:", ["Pesquisar", "Item avulso", "Orçamento"], index=0)
-
     st.divider()
     itens = st.session_state.get("itens", [])
     subtotal = sum(float(i.get("Total", 0.0)) for i in itens)
-
     st.metric("💰 Parcial do orçamento", fmt_brl(subtotal))
     st.write(f"🛒 Itens no orçamento: **{len(itens)}**")
 
-  #  st.divider()
-  #  st.subheader("📤 Exportar PDF")
-
-    
 # ---------- RENDER ----------
 if view == "Pesquisar":
     ui_pesquisa(df)
@@ -512,10 +487,7 @@ elif view == "Item avulso":
 elif view == "Orçamento":
     ui_orcamento(logo_bytes)
 
-
-# ================================================================
-
-# ====== PDF (sem coluna Código, fonte menor, quebra de linha, persistente) ======
+# ====== PDF ======
 st.subheader("📤 Exportar PDF")
 cliente = st.text_input("Cliente/Projeto (opcional):", "")
 obs = st.text_area("Observações (opcional):", "")
@@ -536,7 +508,6 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
     )
     styles = getSampleStyleSheet()
 
-    # estilos menores
     title_style = styles["Title"]; title_style.fontSize = 18
     body = ParagraphStyle("body", parent=styles["Normal"], fontSize=9, leading=11)
     body_center = ParagraphStyle("body_center", parent=body, alignment=1)
@@ -544,7 +515,6 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
 
     elems = []
 
-    # Logo
     if logo_bytes:
         try:
             elems.append(RLImage(io.BytesIO(logo_bytes), width=3.5*cm, height=3.5*cm))
@@ -552,7 +522,6 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
         except Exception:
             pass
 
-    # Cabeçalho
     title = "Orçamento - Made in Natural"
     if cliente.strip(): title += f" — {cliente.strip()}"
     elems.append(Paragraph(title, title_style))
@@ -562,7 +531,6 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
         elems.append(Paragraph(f"<b>Observações:</b> {escape(obs.strip())}", styles["Normal"]))
     elems.append(Spacer(1, 10))
 
-    # Tabela (SEM CÓDIGO)
     cab = ["Produto", "Qtd", "Preço Tabela", "Desc (%)", "Preço Final", "Total"]
 
     rows = []
@@ -571,7 +539,7 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
             Paragraph(escape(str(i["Produto"])), body),
             Paragraph(str(i["Quantidade"]), body_center),
             Paragraph(fmt_brl(float(i["Preço Tabela"])), body_right),
-            Paragraph(f'{float(i["Desconto %"]):.2f}%', body_center),
+            Paragraph(fmt_pct_br(to_float_pct(i.get("Desconto %", 0))), body_center),  # >>> CORREÇÃO
             Paragraph(fmt_brl(float(i["Preço Negociado"])), body_right),
             Paragraph(fmt_brl(float(i["Total"])), body_right),
         ])
@@ -579,7 +547,6 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
     total_geral = sum(float(i["Total"]) for i in itens)
     rows.append(["", "", "", "", Paragraph("<b>TOTAL</b>", body_right), Paragraph(fmt_brl(total_geral), body_right)])
 
-    # larguras calibradas p/ A4 com margens
     col_widths = [260, 35, 75, 55, 70, 52]
 
     t = Table([cab] + rows, colWidths=col_widths, repeatRows=1)
@@ -589,10 +556,10 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
         ("FONTSIZE",  (0,0), (-1,0), 10),
         ("GRID",      (0,0), (-1,-1), 0.4, colors.black),
         ("VALIGN",    (0,0), (-1,-1), "MIDDLE"),
-        ("ALIGN",     (1,1), (1,-2), "CENTER"),   # Qtd
-        ("ALIGN",     (2,1), (2,-2), "RIGHT"),    # Preço Tabela
-        ("ALIGN",     (3,1), (3,-2), "CENTER"),   # Desc
-        ("ALIGN",     (4,1), (5,-2), "RIGHT"),    # Preço Final / Total
+        ("ALIGN",     (1,1), (1,-2), "CENTER"),
+        ("ALIGN",     (2,1), (2,-2), "RIGHT"),
+        ("ALIGN",     (3,1), (3,-2), "CENTER"),
+        ("ALIGN",     (4,1), (5,-2), "RIGHT"),
         ("TOPPADDING",(0,0), (-1,-1), 4),
         ("BOTTOMPADDING",(0,0), (-1,-1), 4),
     ]))
@@ -601,7 +568,6 @@ def gerar_pdf_bytes(cliente: str, obs: str, itens: list, logo_bytes: bytes) -> b
     doc.build(elems)
     return buf.getvalue()
 
-# Botão para gerar + persistir os bytes
 if st.button("📄 Gerar PDF"):
     with st.spinner("Gerando PDF..."):
         try:
@@ -612,7 +578,6 @@ if st.button("📄 Gerar PDF"):
         except Exception as e:
             st.error(f"Erro ao gerar PDF: {e}")
 
-# Botão de download persistente (fora do if)
 if st.session_state.get("pdf_bytes"):
     st.download_button(
         "📥 Baixar PDF",
